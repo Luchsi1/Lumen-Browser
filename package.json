@@ -71,7 +71,7 @@
           ]
         }
       ],
-      "artifactName": "Lumen-${version}-${arch}-${target}.${ext}",
+      "artifactName": "Lumen-Setup-${version}-${arch}.${ext}",
       "fileAssociations": [
         {
           "ext": "html",
@@ -92,7 +92,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
-      "shortcutName": "Lumen"
+      "shortcutName": "Lumen",
+      "artifactName": "Lumen-Setup-${version}-${arch}.${ext}"
     },
     "portable": {
       "artifactName": "Lumen-${version}-portable.${ext}"
