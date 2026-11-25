@@ -1,0 +1,110 @@
+{
+  "name": "lumen-browser",
+  "productName": "Lumen",
+  "version": "1.0.0",
+  "description": "Lumen - a Chromium-based desktop browser with built-in ad blocking and Chrome extension support",
+  "author": "Lumen Browser Project",
+  "license": "MIT",
+  "private": true,
+  "main": "dist/main/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder --win nsis portable --x64 --publish never",
+    "dist:dir": "npm run build && electron-builder --win dir --x64 --publish never",
+    "fetch-lists": "node --experimental-strip-types scripts/fetch-lists.mjs"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron-preload": "^2.20.3",
+    "electron-chrome-extensions": "^4.10.0",
+    "electron-chrome-web-store": "^0.13.0"
+  },
+  "devDependencies": {
+    "@ghostery/adblocker": "^2.20.3",
+    "@types/chrome": "^0.3.8",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.0",
+    "fflate": "^0.8.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "tldts-experimental": "^7.5.5",
+    "typescript": "^5.9.0",
+    "vite": "^8.3.8"
+  },
+  "build": {
+    "appId": "com.lumen.browser",
+    "productName": "Lumen",
+    "copyright": "Copyright (c) Lumen Browser Project",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "build/icon.png",
+      "package.json",
+      "!**/*.map"
+    ],
+    "asar": true,
+    "icon": "build/icon.png",
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Lumen-${version}-${arch}-${target}.${ext}",
+      "fileAssociations": [
+        {
+          "ext": "html",
+          "name": "HTML Document",
+          "role": "Viewer"
+        },
+        {
+          "ext": "htm",
+          "name": "HTML Document",
+          "role": "Viewer"
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "shortcutName": "Lumen"
+    },
+    "portable": {
+      "artifactName": "Lumen-${version}-portable.${ext}"
+    },
+    "extraResources": [
+      {
+        "from": "resources/filterlists",
+        "to": "filterlists"
+      }
+    ]
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}

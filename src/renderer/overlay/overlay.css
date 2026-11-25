@@ -1,0 +1,55 @@
+html, body { background: transparent !important; }
+.backdrop { position: fixed; inset: 0; }
+.backdrop.dim { background: rgba(10, 12, 18, 0.35); }
+.compact { height: 100%; }
+.panel { position: absolute; background: var(--bg-raised); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); overflow: auto; animation: pop 0.12s ease-out; }
+@keyframes pop { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+.p-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px 10px; }
+.p-head h2 { margin: 0; font-size: 14.5px; font-weight: 600; flex: 1; min-width: 0; }
+.p-body { padding: 4px 16px 14px; }
+.p-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 16px 14px; }
+.p-sep { height: 1px; background: var(--border); margin: 6px 0; }
+.row { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 4px 16px; }
+.row.clickable:hover { background: var(--bg-hover); }
+.row .grow { flex: 1; min-width: 0; }
+.row .sub { font-size: 12px; color: var(--fg-muted); }
+.menu-item { display: flex; align-items: center; gap: 12px; width: 100%; height: 34px; padding: 0 16px; border: 0; background: transparent; text-align: left; }
+.menu-item:hover { background: var(--bg-hover); }
+.menu-item .key { margin-left: auto; color: var(--fg-faint); font-size: 12px; }
+.menu-item svg { color: var(--fg-muted); flex: none; }
+
+.stat-hero { display: flex; align-items: baseline; gap: 10px; padding: 2px 16px 12px; }
+.stat-hero .num { font: 600 38px/1 var(--font-display); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+.stat-hero .label { color: var(--fg-muted); }
+.state-line { display: flex; align-items: center; gap: 8px; padding: 0 16px 8px; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); }
+.dot.off { background: var(--fg-faint); }
+.req-list { margin: 0; padding: 0; list-style: none; max-height: 190px; overflow: auto; border-top: 1px solid var(--border); }
+.req-list li { padding: 5px 16px; font-size: 11.5px; border-bottom: 1px solid var(--border); }
+.req-list .u { font-family: var(--mono); font-size: 11px; word-break: break-all; }
+
+.sugg { padding: 6px; background: var(--bg-raised); height: 100%; border: 1px solid var(--border); border-radius: 0 0 14px 14px; box-shadow: var(--shadow); overflow: hidden; }
+.sugg-row { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 8px; }
+.sugg-row.sel, .sugg-row:hover { background: var(--accent-soft); }
+.sugg-row .ico { width: 18px; display: grid; place-items: center; color: var(--fg-muted); flex: none; }
+.sugg-row .t { flex: 1; min-width: 0; }
+.sugg-row .u { color: var(--fg-muted); font-size: 12px; max-width: 45%; }
+
+.findbar { display: flex; align-items: center; gap: 4px; height: 100%; padding: 0 8px 0 12px; background: var(--bg-raised); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); }
+.findbar input { flex: 1; min-width: 0; border: 0; background: transparent; outline: 0; font-size: 13.5px; }
+.findbar .count { color: var(--fg-muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; padding: 0 4px; }
+
+.prompt-icon { width: 38px; height: 38px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; flex: none; }
+.src-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; max-height: 250px; overflow: auto; padding: 4px 0; }
+.src { border: 2px solid transparent; border-radius: 8px; padding: 4px; background: var(--bg-hover); text-align: left; }
+.src.on { border-color: var(--accent); }
+.src img { width: 100%; border-radius: 4px; display: block; }
+.src span { font-size: 11.5px; display: block; margin-top: 4px; }
+.perm-select { border: 1px solid var(--border-strong); background: var(--bg-raised); border-radius: 6px; padding: 3px 6px; }
+.color-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 0; }
+.swatch { width: 22px; height: 22px; border-radius: 50%; border: 2px solid transparent; }
+.swatch.on { border-color: var(--fg); }
+.dl-bar { height: 4px; border-radius: 2px; background: var(--bg-hover); overflow: hidden; margin-top: 5px; }
+.dl-bar > i { display: block; height: 100%; background: var(--accent); }
+.ext-ic { width: 28px; height: 28px; border-radius: 6px; flex: none; }
