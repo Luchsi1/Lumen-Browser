@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { invoke, useRemote, useSettings } from '../common/api.ts'
-import { Empty, Favicon, PageShell, guard, toast } from './shared.tsx'
+import { Empty, Favicon, PageShell, guard } from './shared.tsx'
 import { openLink } from './util.tsx'
 import { faviconFor } from '../common/api.ts'
 import type { HistoryEntry } from '../../shared/types.ts'
@@ -59,4 +59,3 @@ export function HistoryPage() {
     </PageShell>
   )
 }
-void toast

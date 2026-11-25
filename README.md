@@ -53,13 +53,16 @@ Tested on Linux (Electron 45 under Xvfb):
 - Typecheck is clean; build succeeds; the app starts both from source and from a packaged `app.asar`.
 - Every internal page renders without console errors.
 - Ad blocking end to end: a custom network rule blocked a script on a live page, a cosmetic rule hid an element, the session counter increased, other scripts still ran.
+- Downloads: progress and speed, pause, resume, cancel (partial file removed), completion, unique file names, size matches on disk (30 MB local file).
+- Private window opens with its own session; no history is recorded and no private partition is written to disk.
+- Extensions: an unpacked Manifest V3 test extension installed, its content script ran on a page, its service worker started and logged, and enable/disable/pin worked.
 - Persistence across restart: bookmarks, history, settings. Session restore after a normal window close restored all three tabs.
 
 **Not tested** (needs Windows, internet or real-world use):
 - The NSIS installer, the portable exe, the Windows icon, uninstall, and Default Apps registration.
 - DPAPI password encryption (the sandbox has no secure storage, so the page correctly reports it unavailable).
 - Downloading the filter lists (the sandbox blocks it). The update code path ran and reported its error correctly; the lists are bundled during the GitHub build.
-- Installing real Chrome extensions or Web Store installs.
+- Real third-party extensions (only a small test extension was run) and Web Store installs; extension popups were not opened.
 - Audio indicators, hardware video acceleration, camera/microphone prompts, drag and drop in the UI by hand, high-DPI and multi-monitor behavior, and long-term stability or memory use.
 - Performance relative to Chrome. Lumen uses Chromium via Electron, but this was not benchmarked.
 

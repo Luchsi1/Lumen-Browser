@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { formatBytes, formatEta, invoke, useEvent, useRemote } from '../common/api.ts'
 import { Icon, type IconName } from '../common/icons.tsx'
-import { SHORTCUT_LABELS } from '../../shared/defaults.ts'
 import type { Bookmark, DownloadRecord, ExtensionInfo, PermissionKind, PermissionValue, ProfileInfo, PromptRequest, SiteBlockStats, SiteInfo, SuggestionItem, TabGroup } from '../../shared/types.ts'
-void SHORTCUT_LABELS
 
 const open = (url: string, close: () => void) => { invoke('nav:go', url, { newTab: true }); close() }
 
@@ -193,7 +191,7 @@ export function MainMenu({ mode, folderId, close }: { mode?: string; folderId?: 
       {item('puzzle', 'Extensions', cmd('open.extensions'), 'Ctrl+Shift+X')}
       {item('key', 'Passwords', () => open('lumen://passwords', close))}
       <div className="p-sep" />
-      <ZoomRow close={close} />
+      <ZoomRow />
       <div className="p-sep" />
       {item('find', 'Find in page', cmd('page.find'), 'Ctrl+F')}
       {item('print', 'Print', cmd('page.print'), 'Ctrl+P')}
@@ -207,8 +205,7 @@ export function MainMenu({ mode, folderId, close }: { mode?: string; folderId?: 
   )
 }
 
-function ZoomRow({ close }: { close: () => void }) {
-  void close
+function ZoomRow() {
   return (
     <div className="row"><Icon name="zoomIn" size={16} /><span className="grow">Zoom</span>
       <button className="btn" aria-label="Zoom out" onClick={() => invoke('cmd', 'page.zoomOut')}>-</button>

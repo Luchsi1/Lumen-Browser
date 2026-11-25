@@ -41,4 +41,4 @@ Other limits:
 
 ## Tested
 
-Unit tests cover the compatibility analysis and CRX unpacking. Loading and running real third-party extensions and installing from the Web Store was **not** tested in the development environment (no network access to the store, no Windows).
+Unit tests cover the compatibility analysis and CRX unpacking. A small Manifest V3 test extension was installed, its content script ran and its service worker logged on Linux. Loading and running real third-party extensions and installing from the Web Store was **not** tested in the development environment (no network access to the store, no Windows).

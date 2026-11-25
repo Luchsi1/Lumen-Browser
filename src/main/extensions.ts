@@ -294,7 +294,10 @@ export class ExtensionManager extends EventEmitter {
     try {
       this.profile.session.serviceWorkers.on('console-message', (_e, d: any) => {
         const id = this.extensionIdFromUrl(String(d.sourceUrl ?? ''))
-        if (id) this.log(id, String(d.level ?? 'info'), String(d.message), 'service worker')
+        if (id) {
+          const lv = typeof d.level === 'number' ? levelName[d.level] : String(d.level ?? 'info')
+          this.log(id, lv === 'log' ? 'info' : lv ?? 'info', String(d.message), 'service worker')
+        }
       })
     } catch { /* older API */ }
   }

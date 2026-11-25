@@ -42,8 +42,7 @@ export function Empty({ icon, title, children }: { icon: IconName; title: string
   return <div className="empty"><Icon name={icon} size={30} /><div className="empty-title">{title}</div>{children && <div className="muted">{children}</div>}</div>
 }
 
-export function Favicon({ src, url, size = 16 }: { src?: string; url?: string; size?: number }) {
-  void url
+export function Favicon({ src, size = 16 }: { src?: string; url?: string; size?: number }) {
   return src ? <img src={src} width={size} height={size} alt="" style={{ borderRadius: 3 }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden' }} /> : <Icon name="globe" size={size} />
 }
 

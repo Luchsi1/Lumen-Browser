@@ -23,7 +23,7 @@ Tipp: Wenn der Upload von vielen Dateien Probleme macht, GitHub Desktop (https:/
 1. Auf den fertigen Lauf klicken.
 2. Unten unter **Artifacts** auf **Lumen-windows** klicken. Du bekommst eine ZIP-Datei.
 3. Darin liegen:
-   - `Lumen-1.0.0-x64-nsis.exe`: Installer
+   - `Lumen-Setup-1.0.0-x64.exe`: Installer
    - `Lumen-1.0.0-portable.exe`: läuft ohne Installation
 
 ## 5. Erster Start

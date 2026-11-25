@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { invoke, useRemote, timeAgo } from '../common/api.ts'
+import { invoke, useRemote } from '../common/api.ts'
 import { Icon } from '../common/icons.tsx'
 import { Empty, PageShell, Section, Toggle, guard, toast } from './shared.tsx'
 import type { ExtensionInfo, ExtensionLogEntry } from '../../shared/types.ts'
@@ -73,4 +73,3 @@ function ExtensionRow({ e, expanded, toggleOpen, run }: { e: ExtensionInfo; expa
     </div>
   )
 }
-void timeAgo
