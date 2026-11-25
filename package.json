@@ -69,21 +69,15 @@
           "arch": [
             "x64"
           ]
-        }
-      ],
-      "artifactName": "Lumen-Setup-${version}-${arch}.${ext}",
-      "fileAssociations": [
-        {
-          "ext": "html",
-          "name": "HTML Document",
-          "role": "Viewer"
         },
         {
-          "ext": "htm",
-          "name": "HTML Document",
-          "role": "Viewer"
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
         }
-      ]
+      ],
+      "artifactName": "Lumen-${version}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
