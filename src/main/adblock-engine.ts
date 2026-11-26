@@ -35,6 +35,10 @@ export class FilterEngineManager {
   stats: BuildStats = { networkRules: 0, cosmeticRules: 0, totalRules: 0, customErrors: [], ms: 0 }
 
   private cacheDir?: string
+  private resourcesText = ''
+  private resourcesSum = ''
+  /** Number of scriptlets/redirect resources currently loaded (0 means `##+js()` rules do nothing). */
+  resourceCount = 0
 
   constructor(cacheDir?: string) {
     this.cacheDir = cacheDir
@@ -59,6 +63,7 @@ export class FilterEngineManager {
       if (!cachedAds) this.writeCache('ads', key, this.ads)
       if (!cachedSec) this.writeCache('security', key, this.security)
     }
+    this.applyResources()
     const a = this.ads.getFilters()
     const s = this.security.getFilters()
     this.stats = {
@@ -70,6 +75,24 @@ export class FilterEngineManager {
     }
     this.ready = true
     return this.stats
+  }
+
+  /** uBlock Origin resources.json: scriptlets (`##+js(...)`) and redirect resources. Applies immediately. */
+  setResources(text: string) {
+    let count = 0
+    try {
+      const d = JSON.parse(text)
+      count = (Array.isArray(d.scriptlets) ? d.scriptlets.length : 0) + (Array.isArray(d.redirects) ? d.redirects.length : 0)
+    } catch { throw new Error('resources file is not valid JSON') }
+    this.resourcesText = text
+    this.resourcesSum = `${text.length}:${text.slice(0, 64)}:${text.slice(-64)}`
+    this.resourceCount = count
+    this.applyResources()
+  }
+
+  private applyResources() {
+    if (!this.resourcesText) return
+    try { this.ads.updateResources(this.resourcesText, this.resourcesSum) } catch { /* keep running without scriptlets */ }
   }
 
   private compile(inputs: EngineInput[], extra: string): FiltersEngine {

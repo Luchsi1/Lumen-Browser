@@ -16,6 +16,7 @@ interface Meta { status: Record<string, { lastUpdated: number | null; ruleCount:
 
 interface TabStats { host: string; count: number; recent: BlockedRequestInfo[]; byDomain: Record<string, number>; popups: number }
 
+const RESOURCES_URL = 'https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/resources.json'
 const PRELOAD_CHANNEL_INJECT = '@ghostery/adblocker/inject-cosmetic-filters'
 const PRELOAD_CHANNEL_MUT = '@ghostery/adblocker/is-mutation-observer-enabled'
 const SECURITY_CATEGORY = 'security'
@@ -31,6 +32,7 @@ export class AdblockService extends EventEmitter {
   private timer: NodeJS.Timeout | null = null
   private emitTimer: NodeJS.Timeout | null = null
   private customErrors: string[] = []
+  private resourcesError: string | undefined
   private preloadPath: string | null = null
   private cosmeticHandlerInstalled = false
 
@@ -47,8 +49,28 @@ export class AdblockService extends EventEmitter {
   private get settings() { return this.data.settings.data }
 
   // ------------------------------------------------------------------ lifecycle
+  private resourcesFile() { return path.join(this.listDir, '_resources.json') }
+
+  private loadResources(): boolean {
+    try { this.engine.setResources(fs.readFileSync(this.resourcesFile(), 'utf8')); return true } catch { return false }
+  }
+
+  /** Scriptlet library for `##+js(...)` rules. Failure is not fatal: those rules are then inactive. */
+  private async updateResources() {
+    try {
+      const res = await net.fetch(RESOURCES_URL, { signal: AbortSignal.timeout(90_000), headers: { 'User-Agent': 'Lumen-FilterUpdater' } })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const text = await res.text()
+      this.engine.setResources(text) // validates
+      const tmp = this.resourcesFile() + '.tmp'
+      fs.writeFileSync(tmp, text); fs.renameSync(tmp, this.resourcesFile())
+      this.resourcesError = undefined
+    } catch (e: any) { this.resourcesError = String(e?.message ?? e) }
+  }
+
   init() {
     this.seedFromBundle()
+    this.loadResources()
     this.rebuild()
     this.installCosmeticHandler()
     this.schedule()
@@ -75,6 +97,8 @@ export class AdblockService extends EventEmitter {
         } catch (e) { console.error('[adblock] seed failed', l.id, e) }
       }
     }
+    const rs = path.join(seed, 'resources.json')
+    if (!fs.existsSync(this.resourcesFile()) && fs.existsSync(rs)) { try { fs.copyFileSync(rs, this.resourcesFile()) } catch { /* optional */ } }
     this.meta.save()
   }
 
@@ -143,7 +167,7 @@ export class AdblockService extends EventEmitter {
   /** Download all enabled lists (or just one) and rebuild. `force` ignores nothing today but marks manual intent. */
   async updateAll(_force: boolean, onlyId?: string): Promise<void> {
     const targets = this.cfg.lists.filter((l) => (onlyId ? l.id === onlyId : l.enabled))
-    await Promise.all(targets.map((l) => this.updateList(l)))
+    await Promise.all([...targets.map((l) => this.updateList(l)), this.updateResources()])
     if (targets.some((l) => !this.meta.data.status[l.id]?.error)) this.meta.data.lastUpdate = Date.now()
     this.meta.flush()
     await new Promise((r) => setImmediate(r))
@@ -367,7 +391,7 @@ export class AdblockService extends EventEmitter {
       updating: this.updating.has(l.id),
     }))
     const st = this.engine.stats
-    return { ready: this.engine.ready, totalRules: st.totalRules, networkRules: st.networkRules, cosmeticRules: st.cosmeticRules, statuses, sessionBlocked: this.sessionBlocked, lastUpdate: this.meta.data.lastUpdate, customRuleErrors: this.customErrors }
+    return { ready: this.engine.ready, totalRules: st.totalRules, networkRules: st.networkRules, cosmeticRules: st.cosmeticRules, statuses, sessionBlocked: this.sessionBlocked, lastUpdate: this.meta.data.lastUpdate, customRuleErrors: this.customErrors, scriptletCount: this.engine.resourceCount, scriptletError: this.resourcesError }
   }
 
   private emitChanged(tabId?: number) {

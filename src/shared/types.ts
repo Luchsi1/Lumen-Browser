@@ -47,6 +47,8 @@ export interface Settings {
   downloadDir: string
   askDownloadLocation: boolean
   hardwareAcceleration: boolean
+  /** Send Chrome-compatible browser hints (needed for Google sign-in). */
+  reportAsChrome: boolean
   backgroundTabSleepMinutes: number // 0 disables discarding
   adblock: AdblockSettings
   shortcuts: Record<string, string>
@@ -154,6 +156,9 @@ export interface AdblockStatus {
   sessionBlocked: number
   lastUpdate: number | null
   customRuleErrors: string[]
+  /** Scriptlets and redirect resources loaded for `##+js()` rules; 0 means those rules are inactive. */
+  scriptletCount: number
+  scriptletError?: string
 }
 
 export type CompatLevel = 'full' | 'partial' | 'limited' | 'unsupported'

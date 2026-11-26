@@ -508,6 +508,7 @@ export class Browser {
     return {
       profile: w.profile, adblock: this.adblock, pagePreload: this.paths.pagePreload, isPrivate: w.isPrivate,
       settingsHistoryEnabled: () => self.settings.historyEnabled,
+      settingsReportAsChrome: () => self.settings.reportAsChrome,
       getZoom: (host) => w.profile.data.d.zoom[host],
       setZoom: (host, level) => { if (!host) return; if (level === 0) delete w.profile.data.d.zoom[host]; else w.profile.data.d.zoom[host] = level; w.profile.data.save() },
       changed: (tab, urlChanged) => { self.onTabChanged(w, tab, !!urlChanged) },

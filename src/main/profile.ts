@@ -1,5 +1,6 @@
 // A ProfileContext owns one Electron Session (persistent or in-memory) and wires all browser
 // behaviour into it: protocol handler, request filtering, cookies, permissions, downloads.
+import os from 'node:os'
 import { app, BrowserWindow, desktopCapturer, webContents, session as electronSession, net, type Session, type WebContents } from 'electron'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -32,6 +33,31 @@ export function chromeUserAgent(): string {
   const major = process.versions.chrome.split('.')[0]
   const os = process.platform === 'win32' ? 'Windows NT 10.0; Win64; x64' : process.platform === 'darwin' ? 'Macintosh; Intel Mac OS X 10_15_7' : 'X11; Linux x86_64'
   return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
+}
+
+/**
+ * Chromium sends client hints (Sec-CH-UA, navigator.userAgentData) with brands "Chromium" and a GREASE entry only when it is
+ * embedded by Electron. Together with a "Chrome/..." user agent this looks like an embedded app and Google refuses sign-in.
+ * Chrome-compatible browsers (Edge, Brave, Opera) report their own brand plus Chromium. Lumen reports Chrome's brand set, matching
+ * its Chrome user agent, so both agree. Uses the DevTools protocol, which is the only way to change navigator.userAgentData.
+ */
+export async function applyClientHints(wc: WebContents): Promise<void> {
+  try {
+    if (!wc.debugger.isAttached()) wc.debugger.attach('1.3')
+    const full = process.versions.chrome
+    const major = full.split('.')[0]
+    const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
+    const build = Number(os.release().split('.')[2] ?? 0)
+    const platformVersion = process.platform === 'win32' ? (build >= 22000 ? '15.0.0' : '10.0.0') : process.platform === 'darwin' ? '14.0.0' : '6.0.0'
+    await wc.debugger.sendCommand('Emulation.setUserAgentOverride', {
+      userAgent: chromeUserAgent(),
+      userAgentMetadata: {
+        brands: [{ brand: 'Not.A/Brand', version: '8' }, { brand: 'Chromium', version: major }, { brand: 'Google Chrome', version: major }],
+        fullVersionList: [{ brand: 'Not.A/Brand', version: '8.0.0.0' }, { brand: 'Chromium', version: full }, { brand: 'Google Chrome', version: full }],
+        platform, platformVersion, architecture: process.arch === 'arm64' ? 'arm' : 'x86', model: '', mobile: false, bitness: '64', wow64: false,
+      },
+    })
+  } catch (e) { console.warn('[hints] could not apply client hints', e) }
 }
 
 export class ProfileContext {

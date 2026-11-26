@@ -2,7 +2,7 @@
 import { WebContentsView, shell, type ContextMenuParams, type Event as ElectronEvent, type Input, type WebContents } from 'electron'
 import { isInternalUrl, originOf } from '../shared/url.ts'
 import type { TabState } from '../shared/types.ts'
-import type { ProfileContext } from './profile.ts'
+import { applyClientHints, type ProfileContext } from './profile.ts'
 import type { AdblockService } from './adblock.ts'
 
 let nextTabId = 1
@@ -14,6 +14,7 @@ export interface TabHost {
   pagePreload: string
   isPrivate: boolean
   settingsHistoryEnabled(): boolean
+  settingsReportAsChrome(): boolean
   getZoom(host: string): number | undefined
   setZoom(host: string, level: number): void
   changed(tab: Tab, urlChanged?: boolean): void
@@ -89,7 +90,9 @@ export class Tab {
     this.bind(view.webContents)
     this.host.registerWithExtensions(this)
     const target = loadUrl ?? this.url
-    if (target && target !== 'about:blank') this.navigate(target)
+    const go = () => { if (target && target !== 'about:blank') this.navigate(target) }
+    if (this.host.settingsReportAsChrome()) void applyClientHints(view.webContents).finally(go)
+    else go()
     return view
   }
 

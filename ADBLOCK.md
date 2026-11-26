@@ -37,7 +37,8 @@ Shows blocked count on this page and this session, a per-site on/off switch (wri
 ## Limitations
 
 - `$popup` is not supported by the engine; heuristics are used instead and some pop-ups may get through or some legitimate windows may be blocked.
-- Scriptlet injection (`##+js(...)`) depends on engine support for the resource set bundled with it; behavior against anti-adblock scripts is not equal to uBlock Origin's.
+- Scriptlets (`##+js(...)`) run through uBlock Origin's `resources.json` (downloaded with the lists and bundled in the installer). Verified: a `set` scriptlet changed a page value. They run only in the main frame of a page, and behavior against anti-adblock scripts is not equal to uBlock Origin's.
+- **Twitch and other video ads inserted into the video stream itself (server-side ad insertion) cannot be removed by request or element filtering.** uBlock Origin has the same limit; it blocks Twitch's ad requests and banners, but the stream-embedded pre-roll can still play. Lumen does not include a Twitch-specific workaround. Not tested against twitch.tv (no access from the development environment).
 - It is a network filter, not a content-script-level blocker, so it cannot match uBO's YouTube ad handling.
 - Extensions that bring their own blocker (uBlock Origin as extension) will not block network requests (see EXTENSIONS.md).
 - Tested here: rule matching (unit tests) and one live network and one live cosmetic rule. Real-world list performance and breakage rates on popular sites were **not** measured.

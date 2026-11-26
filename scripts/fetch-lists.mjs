@@ -45,4 +45,10 @@ for (const l of BUILTIN_LISTS) {
     }
   }
 }
+try {
+  const text = await get('https://raw.githubusercontent.com/ghostery/adblocker/master/packages/adblocker/assets/ublock-origin/resources.json')
+  JSON.parse(text)
+  await writeFile(path.join(out, 'resources.json'), text)
+  console.log(`ok   resources.json (${(text.length / 1024).toFixed(0)} KB)`)
+} catch (e) { console.warn(`FAIL resources.json: ${e.message}`) }
 console.log(`${ok} lists bundled`)

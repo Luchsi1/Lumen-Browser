@@ -98,3 +98,17 @@ test('serialized cache round trips and is keyed', () => {
   c.build([], [], '', 'k2')
   assert.equal(c.match('https://ads.example.com/x.js', 'https://news.com/', 'script').blocked, false)
 })
+
+test('scriptlets: ##+js rules produce scripts once resources are loaded', async () => {
+  const { FilterEngineManager } = await import('../src/main/adblock-engine.ts')
+  const fs = await import('node:fs')
+  const res = new URL('../resources/filterlists/resources.json', import.meta.url)
+  if (!fs.existsSync(res)) return // resources are downloaded at build time; skip when absent
+  const m = new FilterEngineManager()
+  m.setResources(fs.readFileSync(res, 'utf8'))
+  m.build([{ id: 't', text: 'example.com##+js(set, window.__x, 1)\n' }], [], '')
+  assert.ok(m.resourceCount > 50)
+  const r = m.cosmetics('https://example.com/', 'example.com', 'example.com')
+  assert.ok(r.scripts.length > 0, 'scriptlet code is generated')
+  assert.throws(() => m.setResources('not json'))
+})

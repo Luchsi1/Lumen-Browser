@@ -192,6 +192,7 @@ function Advanced({ s, set }: P) {
   return (
     <>
       <Section title="Performance">
+        <SettingRow label="Report as Google Chrome to websites" hint="Needed to sign in with a Google account, which refuses unknown browsers. Turn off if you prefer Lumen to identify as plain Chromium. Applies to new tabs. Google may still refuse sign-in at any time."><Toggle label="Report as Google Chrome" checked={s.reportAsChrome} onChange={(v) => set({ reportAsChrome: v })} /></SettingRow>
         <SettingRow label="Use hardware acceleration when available" hint="Needs a restart. Turn off if pages show graphical glitches."><Toggle label="Hardware acceleration" checked={s.hardwareAcceleration} onChange={async (v) => { await set({ hardwareAcceleration: v }) }} /></SettingRow>
         <SettingRow label="Put unused tabs to sleep" hint="Frees the memory of background tabs that have not been used for a while. Playing and loading tabs are never put to sleep.">
           <select className="field" value={s.backgroundTabSleepMinutes} onChange={(e) => set({ backgroundTabSleepMinutes: Number(e.target.value) })}>
