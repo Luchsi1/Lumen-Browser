@@ -87,7 +87,8 @@
       "createStartMenuShortcut": true,
       "deleteAppDataOnUninstall": false,
       "shortcutName": "Lumen",
-      "artifactName": "Lumen-Setup-${version}-${arch}.${ext}"
+      "artifactName": "Lumen-Setup-${version}-${arch}.${ext}",
+      "include": "build/installer.nsh"
     },
     "portable": {
       "artifactName": "Lumen-${version}-portable.${ext}"

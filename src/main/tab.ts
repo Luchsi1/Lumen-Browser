@@ -90,9 +90,9 @@ export class Tab {
     this.bind(view.webContents)
     this.host.registerWithExtensions(this)
     const target = loadUrl ?? this.url
-    const go = () => { if (target && target !== 'about:blank') this.navigate(target) }
-    if (this.host.settingsReportAsChrome()) void applyClientHints(view.webContents).finally(go)
-    else go()
+    // The DevTools command below only completes once the tab has a page, so it must not delay the first navigation.
+    if (this.host.settingsReportAsChrome()) void applyClientHints(view.webContents)
+    if (target && target !== 'about:blank') this.navigate(target)
     return view
   }
 

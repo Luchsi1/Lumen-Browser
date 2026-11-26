@@ -30,7 +30,7 @@ npm run dist       # on Windows: installer + portable into ./release
 | Bookmarks | Folders, nesting, drag and drop, edit, search, HTML import/export, bookmarks bar |
 | History | Persistent, search, single-day filter, delete items, clear by period, can be turned off |
 | Downloads | Progress, speed, ETA, pause/resume, cancel, retry, open, show in folder, ask-where option, default folder |
-| Privacy | Private windows (in-memory session, nothing written to disk), cookie clearing, third-party cookie blocking, tracking protection lists, GPC/DNT headers, per-site permissions (camera, microphone, location, notifications, pop-ups), HTTPS upgrade with fallback, passwords encrypted with the OS (DPAPI on Windows), clear browsing data |
+| Privacy | Private windows (in-memory session, nothing written to disk), cookie manager (per-site list and delete), cookie clearing, third-party cookie blocking, tracking protection lists, GPC/DNT headers, per-site permissions (camera, microphone, location, notifications, pop-ups), HTTPS upgrade with fallback, passwords encrypted with the OS (DPAPI on Windows), clear browsing data |
 | Settings | `lumen://settings`. Every option is saved and applied immediately unless marked "restart required" |
 | Data safety | Atomic writes (temp file, fsync, rename), rolling backups in `backups/`, automatic recovery from the newest valid backup |
 | Shortcuts | Chrome-like defaults, all rebindable in Settings |
@@ -54,12 +54,14 @@ Tested on Linux (Electron 45 under Xvfb):
 - Every internal page renders without console errors.
 - Ad blocking end to end: a custom network rule blocked a script on a live page, a cosmetic rule hid an element, the session counter increased, other scripts still ran.
 - Downloads: progress and speed, pause, resume, cancel (partial file removed), completion, unique file names, size matches on disk (30 MB local file).
+- Tabs: pin, groups (create/rename/recolor/collapse/ungroup/close), move, mute flag, duplicate, close and restore; keyboard shortcuts with real key events (Ctrl+T, Ctrl+W, Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+1, Ctrl+Shift+N); real middle-click on tabs, including fast double clicks; cookie manager (list, delete per site).
+- Address bar on a new tab: typing keeps focus and text (real key events). New tabs can open the homepage or the new tab page (setting). HTML fullscreen from a page and from an iframe, and leaving with Esc.
 - Private window opens with its own session; no history is recorded and no private partition is written to disk.
 - Extensions: an unpacked Manifest V3 test extension installed, its content script ran on a page, its service worker started and logged, and enable/disable/pin worked.
 - Persistence across restart: bookmarks, history, settings. Session restore after a normal window close restored all three tabs.
 
 **Not tested** (needs Windows, internet or real-world use):
-- The NSIS installer, the portable exe, the Windows icon, uninstall, and Default Apps registration.
+- The NSIS installer, the portable exe, the Windows icon, uninstall, and the Default Apps registration (`build/installer.nsh`, per-user registry keys; Lumen should then appear under Settings, Apps, Default apps).
 - DPAPI password encryption (the sandbox has no secure storage, so the page correctly reports it unavailable).
 - Downloading the filter lists (the sandbox blocks it). The update code path ran and reported its error correctly; the lists are bundled during the GitHub build.
 - Real third-party extensions (only a small test extension was run) and Web Store installs; extension popups were not opened.

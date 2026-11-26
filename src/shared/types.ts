@@ -30,6 +30,8 @@ export interface AdblockSettings {
 export interface Settings {
   startup: 'newtab' | 'home' | 'restore'
   homepage: string
+  /** What a new tab shows: the built-in new tab page or the homepage. */
+  newTabOpens: 'newtab' | 'home'
   searchEngine: string
   customSearchUrl: string
   theme: ThemeMode

@@ -64,6 +64,7 @@ function General({ s, set }: P) {
             <option value="restore">Continue where I left off</option><option value="newtab">Open the new tab page</option><option value="home">Open the home page</option></select></SettingRow>
         <SettingRow label="Home page" hint="Used by the Home button and when startup is set to open the home page.">
           <input className="field" value={home} onChange={(e) => setHome(e.target.value)} onBlur={() => home !== s.homepage && set({ homepage: home.trim() || 'lumen://newtab' })} placeholder="lumen://newtab" /></SettingRow>
+        <SettingRow label="New tabs open" hint="Pages that open links in a new tab are not affected."><select className="field" value={s.newTabOpens} onChange={(e) => set({ newTabOpens: e.target.value as 'newtab' | 'home' })}><option value="home">My homepage</option><option value="newtab">The new tab page</option></select></SettingRow>
       </Section>
       <Section title="Search">
         <SettingRow label="Default search engine" hint="Used when you type a search in the address bar.">
@@ -113,6 +114,7 @@ function Privacy({ s, set, onClear }: P & { onClear: () => void }) {
         <SettingRow label='Send a "Do Not Track" request' hint="Most sites ignore it."><Toggle label="Do Not Track" checked={s.sendDoNotTrack} onChange={(v) => set({ sendDoNotTrack: v })} /></SettingRow>
         <SettingRow label="Upgrade to HTTPS automatically" hint="Tries https:// first when you open an http:// address and falls back to http:// if the site has no secure version."><Toggle label="Upgrade to HTTPS" checked={s.httpsUpgrade} onChange={(v) => set({ httpsUpgrade: v })} /></SettingRow>
       </Section>
+      <CookieManager />
       <Section title="History and passwords">
         <SettingRow label="Save browsing history" hint="Private windows never save history."><Toggle label="Save browsing history" checked={s.historyEnabled} onChange={(v) => set({ historyEnabled: v })} /></SettingRow>
         <SettingRow label="Offer to save passwords" hint={vaultOk === false ? 'Secure storage is not available on this system, so passwords cannot be saved.' : 'Passwords are encrypted with your operating system account (Windows DPAPI).'}><Toggle label="Offer to save passwords" checked={s.offerToSavePasswords && vaultOk !== false} disabled={vaultOk === false} onChange={(v) => set({ offerToSavePasswords: v })} /></SettingRow>
@@ -244,5 +246,38 @@ function ClearDataDialog({ onClose }: { onClose: () => void }) {
       <div className="dlg-foot"><button className="btn" onClick={() => ref.current?.close()}>Cancel</button>
         <button className="btn primary" disabled={busy || !Object.values(o).some(Boolean)} onClick={async () => { setBusy(true); await guard(invoke('data:clear', { since, ...o }), 'Browsing data cleared'); setBusy(false); ref.current?.close() }}>Clear data</button></div>
     </dialog>
+  )
+}
+
+function CookieManager() {
+  const [sites, reload] = useRemote<{ domain: string; count: number; names: string[] }[]>('cookies:sites', [], [], [])
+  const [q, setQ] = useState('')
+  const [open, setOpen] = useState(false)
+  const [openRow, setOpenRow] = useState<string | null>(null)
+  const list = (sites ?? []).filter((x) => x.domain.includes(q.trim().toLowerCase()))
+  const total = (sites ?? []).reduce((a, b) => a + b.count, 0)
+  return (
+    <Section title="Cookies" description={`${total.toLocaleString()} cookies from ${(sites ?? []).length.toLocaleString()} sites are stored in this profile.`}>
+      <SettingRow label="See and delete cookies" hint="Deleting a site's cookies signs you out of it. Private windows keep their cookies in memory only."><button className="btn" onClick={() => { setOpen(!open); reload() }}>{open ? 'Hide' : 'Show sites'}</button></SettingRow>
+      {open && (
+        <div className="srow stack">
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input className="field" type="search" placeholder="Search sites" aria-label="Search sites" value={q} onChange={(e) => setQ(e.target.value)} style={{ flex: 1, minWidth: 180 }} />
+            <button className="btn" disabled={total === 0} onClick={async () => { if (confirm('Delete all cookies? You will be signed out of every site.')) { await guard(invoke('cookies:removeAll'), 'All cookies deleted'); reload() } }}>Delete all cookies</button>
+          </div>
+          {list.length === 0 ? <span className="muted">{(sites ?? []).length ? 'No matching sites.' : 'No cookies stored.'}</span> : (
+            <div className="list" style={{ maxHeight: 340, overflow: 'auto' }}>{list.slice(0, 500).map((x) => (
+              <div key={x.domain}>
+                <div className="item">
+                  <button className="btn quiet grow" style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={() => setOpenRow(openRow === x.domain ? null : x.domain)} aria-expanded={openRow === x.domain}>{x.domain}</button>
+                  <span className="muted">{x.count}</span>
+                  <button className="btn" onClick={async () => { await guard(invoke('cookies:remove', x.domain)); reload() }}>Delete</button>
+                </div>
+                {openRow === x.domain && <div className="sub" style={{ padding: '0 14px 10px', whiteSpace: 'normal', userSelect: 'text' }}>Cookie names: {x.names.join(', ')}{x.count > x.names.length ? ', ...' : ''}</div>}
+              </div>))}
+              {list.length > 500 && <div className="sub" style={{ padding: 10 }}>Showing the first 500 sites. Use search to find others.</div>}
+            </div>)}
+        </div>)}
+    </Section>
   )
 }

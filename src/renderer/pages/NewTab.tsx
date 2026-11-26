@@ -17,7 +17,7 @@ export function NewTabPage() {
         <h1 className="nt-time">{now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</h1>
         <p className="nt-date">{now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
         <form className="nt-search" onSubmit={(e) => { e.preventDefault(); if (q.trim()) invoke('nav:go', q.trim()) }}>
-          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search or enter an address" aria-label="Search or enter an address" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search or enter an address" aria-label="Search or enter an address" />
         </form>
         {priv ? (
           <div style={{ marginTop: 36, maxWidth: 560 }}>

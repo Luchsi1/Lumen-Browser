@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { invoke } from '../common/api.ts'
 import { Icon } from '../common/icons.tsx'
 import { openOverlay } from './overlay-client.ts'
@@ -11,6 +11,11 @@ export function TabStrip({ state }: { state: WindowState }) {
   const [drop, setDrop] = useState<{ index: number; x: number } | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
+  const prevCount = useRef(state.tabs.length)
+  useEffect(() => {
+    if (state.tabs.length > prevCount.current) delete listRef.current?.dataset.frozen
+    prevCount.current = state.tabs.length
+  }, [state.tabs.length])
   const items = useMemo<Item[]>(() => {
     const out: Item[] = []
     const seen = new Set<string>()
@@ -76,6 +81,20 @@ export function TabStrip({ state }: { state: WindowState }) {
   )
 }
 
+/**
+ * Like Chrome: after closing a tab with the mouse, keep the other tabs at their current width until the pointer leaves the strip.
+ * Otherwise the next tab slides under the cursor and a second click (or a double middle-click) closes it by accident.
+ */
+function freezeStrip(from: HTMLElement) {
+  const inner = from.closest('.strip-inner') as HTMLElement | null
+  const strip = from.closest('.strip') as HTMLElement | null
+  if (!inner || !strip || from.classList.contains('pinned')) return
+  inner.style.setProperty('--tab-w', `${from.getBoundingClientRect().width}px`)
+  inner.dataset.frozen = '1'
+  const release = () => { delete inner.dataset.frozen; strip.removeEventListener('mouseleave', release) }
+  strip.addEventListener('mouseleave', release)
+}
+
 function Tab({ tab, group, active, divider, dragging, onDragStart, onDragEnd }: { tab: TabState; group: TabGroup | null; active: boolean; divider: boolean; dragging: boolean; onDragStart: () => void; onDragEnd: () => void }) {
   const title = tab.title || (tab.loading ? 'Loading...' : 'New tab')
   const [imgFailed, setImgFailed] = useState(false)
@@ -87,7 +106,7 @@ function Tab({ tab, group, active, divider, dragging, onDragStart, onDragEnd }: 
       style={group ? ({ '--group': group.color } as React.CSSProperties) : undefined}
       title={`${title}${tab.discarded ? ' (sleeping to save memory)' : ''}${tab.crashed ? ' (crashed, click to reload)' : ''}`}
       onMouseDown={(e) => { if (e.button === 0) invoke('tab:activate', tab.id); if (e.button === 1) e.preventDefault() }}
-      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); e.stopPropagation(); invoke('tab:close', tab.id) } }}
+      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); e.stopPropagation(); freezeStrip(e.currentTarget); invoke('tab:close', tab.id) } }}
       onContextMenu={(e) => { e.preventDefault(); invoke('tab:menu', tab.id) }}
       onDragStart={(e) => { e.dataTransfer.setData('text/plain', tab.url); e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
       onDragEnd={onDragEnd}
@@ -103,7 +122,7 @@ function Tab({ tab, group, active, divider, dragging, onDragStart, onDragEnd }: 
         </button>
       )}
       {!tab.pinned && (
-        <button className="tab-close" aria-label="Close tab" title="Close tab" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); invoke('tab:close', tab.id) }}><Icon name="close" size={13} /></button>
+        <button className="tab-close" aria-label="Close tab" title="Close tab" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); const el = e.currentTarget.closest('.tab') as HTMLElement | null; if (el) freezeStrip(el); invoke('tab:close', tab.id) }}><Icon name="close" size={13} /></button>
       )}
       {divider && <span className="pin-divider" />}
     </div>

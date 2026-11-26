@@ -345,6 +345,9 @@ export function registerIpc(browser: Browser, data: AppData, adblock: AdblockSer
     return true
   })
   handle('data:usage', async (w) => ({ cacheBytes: await w.profile.session.getCacheSize().catch(() => 0), cookieCount: await w.profile.cookieCount() }))
+  handle('cookies:sites', async (w) => w.profile.cookieSites())
+  handle('cookies:remove', async (w, _e, domain: string) => w.profile.removeCookiesFor(String(domain)))
+  handle('cookies:removeAll', async (w) => { await w.profile.session.clearStorageData({ storages: ['cookies'] }); return true })
   handle('data:clearCache', async (w) => { await w.profile.session.clearCache(); return true })
 
   // ------------------------------------------------------------------ profiles

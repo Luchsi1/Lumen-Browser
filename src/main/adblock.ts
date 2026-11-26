@@ -49,6 +49,21 @@ export class AdblockService extends EventEmitter {
   private get settings() { return this.data.settings.data }
 
   // ------------------------------------------------------------------ lifecycle
+  // Neutered stand-ins for blocked scripts (`$redirect=noopjs` and friends). Chromium refuses a redirect from a web page to a
+  // data: URL, so the stub is served from lumen://resource/<id> instead.
+  private stubs = new Map<string, { mime: string; body: Buffer }>()
+
+  private resourceUrl(dataUrl: string): string | null {
+    const mt = /^data:([^;,]+)(;base64)?,(.*)$/s.exec(dataUrl)
+    if (!mt) return null
+    const body = mt[2] ? Buffer.from(mt[3], 'base64') : Buffer.from(decodeURIComponent(mt[3]), 'utf8')
+    const id = createHash('sha1').update(mt[1]).update(body).digest('hex').slice(0, 20)
+    if (!this.stubs.has(id)) this.stubs.set(id, { mime: mt[1], body })
+    return `lumen://resource/${id}`
+  }
+
+  getStub(id: string) { return this.stubs.get(id) ?? null }
+
   private resourcesFile() { return path.join(this.listDir, '_resources.json') }
 
   private loadResources(): boolean {
@@ -261,7 +276,7 @@ export class AdblockService extends EventEmitter {
     const m = this.engine.match(url, topUrl || details.referrer, type)
     if (m.blocked) {
       this.record(wc, url, type, m.filter ?? '', topHost)
-      if (m.redirectUrl && this.cfg.redirectBlocking) return { redirectURL: m.redirectUrl }
+      if (m.redirectUrl) { const r = this.resourceUrl(m.redirectUrl); if (r) return { redirectURL: r } }
       return { cancel: true }
     }
     if (this.cfg.strictThirdParty && !m.exception && (type === 'script' || type === 'subFrame') && isThirdParty(url, topUrl)) {

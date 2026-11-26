@@ -13,6 +13,7 @@
 .tab.active::before, .tab.active::after { content: ''; position: absolute; bottom: 0; width: 9px; height: 9px; pointer-events: none; }
 .tab.active::before { left: -9px; background: radial-gradient(circle at 0 0, transparent 9px, var(--bg-surface) 9.5px); }
 .tab.active::after { right: -9px; background: radial-gradient(circle at 100% 0, transparent 9px, var(--bg-surface) 9.5px); }
+.strip-inner[data-frozen] .tab:not(.pinned) { flex: 0 0 var(--tab-w); }
 .tab.pinned { flex: 0 0 38px; padding: 0; justify-content: center; }
 .tab.dragging { opacity: 0.4; }
 .tab.sleeping:not(.active) .tab-title { opacity: 0.6; }

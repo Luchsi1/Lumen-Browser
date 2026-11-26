@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import { pathToFileURL } from 'node:url'
 // Application entry point.
 import { app, BrowserWindow, Menu, nativeTheme, protocol, session, shell } from 'electron'
 import path from 'node:path'
@@ -28,7 +30,13 @@ if (isDev) app.commandLine.appendSwitch('remote-debugging-port', '9222')
 let browser: Browser | null = null
 
 function urlsFromArgv(argv: string[]): string[] {
-  return argv.slice(app.isPackaged ? 1 : 2).filter((a) => /^(https?:\/\/|file:\/\/)/i.test(a))
+  const out: string[] = []
+  for (const a of argv.slice(app.isPackaged ? 1 : 2)) {
+    if (/^(https?:\/\/|file:\/\/)/i.test(a)) out.push(a)
+    // Windows passes a plain path when a .html file is opened with Lumen.
+    else if (/\.(html?|xhtml|svg|pdf)$/i.test(a) && !a.startsWith('--') && fs.existsSync(a)) out.push(pathToFileURL(a).href)
+  }
+  return out
 }
 
 app.on('second-instance', (_e, argv) => {

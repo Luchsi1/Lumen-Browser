@@ -79,6 +79,7 @@ export const SHORTCUT_LABELS: Record<string, string> = {
 export const DEFAULT_SETTINGS: Settings = {
   startup: 'restore',
   homepage: 'lumen://newtab',
+  newTabOpens: 'home',
   searchEngine: 'duckduckgo',
   customSearchUrl: 'https://www.google.com/search?q=%s',
   theme: 'system',

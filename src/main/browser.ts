@@ -229,6 +229,13 @@ export class Browser {
 
   // ------------------------------------------------------------------ tabs
   newTabUrl(profile: ProfileContext): string {
+    const home = this.settings.homepage?.trim()
+    if (this.settings.newTabOpens === 'home' && home && home !== 'lumen://newtab') return resolveInput(home, this.searchTemplate()).url
+    return this.newTabPageUrl(profile)
+  }
+
+  /** The new tab page itself (an extension may replace it), regardless of the homepage setting. */
+  newTabPageUrl(profile: ProfileContext): string {
     const override = this.extensionsFor(profile.id)?.api.getURLOverrides().newtab
     return override || 'lumen://newtab'
   }
@@ -466,7 +473,7 @@ export class Browser {
   navigate(w: Win, input: string, opts: { newTab?: boolean } = {}) {
     const r = resolveInput(input, this.searchTemplate())
     let url = r.url
-    if (url === 'lumen://newtab') url = this.newTabUrl(w.profile)
+    if (url === 'lumen://newtab') url = this.newTabPageUrl(w.profile)
     if (opts.newTab || !w.active) { this.addTab(w, url); return }
     const t = w.active
     if (!t.wc) this.wake(w, t)
@@ -625,11 +632,14 @@ export class Browser {
   }
 
   hideOverlay(w: Win) {
-    if (!w.overlayOpen) return
+    const o = w.overlayOpen
+    if (!o) return
     w.overlayOpen = null
     w.overlay.setVisible(false)
     w.overlay.webContents.send('overlay:hide')
-    w.active?.wc?.focus()
+    // Give focus back to the page only if the overlay had taken it. The address-bar dropdown never does, and
+    // stealing focus from the address bar while the user types loses what they typed.
+    if (o.focus !== false) w.active?.wc?.focus()
   }
 
   private pumpPrompts(w: Win) {
@@ -708,7 +718,14 @@ export class Browser {
     const t = w.active
     const wc = t?.wc
     switch (action) {
-      case 'tab.new': this.addTab(w, this.newTabUrl(w.profile)); this.post(w, 'cmd:focusAddress'); break
+      case 'tab.new': {
+        const nt = this.addTab(w, this.newTabUrl(w.profile))
+        // A new page takes keyboard focus when it commits, so focus the address bar again then.
+        const focusBar = () => { if (w.win.isDestroyed() || w.active !== nt || w.overlayOpen?.focus !== false && w.overlayOpen) return; w.chrome.focus(); this.post(w, 'cmd:focusAddress') }
+        focusBar()
+        nt.wc?.once('did-navigate', focusBar); nt.wc?.once('dom-ready', focusBar)
+        break
+      }
       case 'tab.close': if (t) this.closeTab(w, t.id); break
       case 'tab.restore': this.restoreClosedTab(w); break
       case 'tab.next': this.cycle(w, 1); break

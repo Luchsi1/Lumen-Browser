@@ -49,6 +49,7 @@ export async function applyClientHints(wc: WebContents): Promise<void> {
     const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
     const build = Number(os.release().split('.')[2] ?? 0)
     const platformVersion = process.platform === 'win32' ? (build >= 22000 ? '15.0.0' : '10.0.0') : process.platform === 'darwin' ? '14.0.0' : '6.0.0'
+    const t0 = Date.now()
     await wc.debugger.sendCommand('Emulation.setUserAgentOverride', {
       userAgent: chromeUserAgent(),
       userAgentMetadata: {
@@ -57,6 +58,7 @@ export async function applyClientHints(wc: WebContents): Promise<void> {
         platform, platformVersion, architecture: process.arch === 'arm64' ? 'arm' : 'x86', model: '', mobile: false, bitness: '64', wow64: false,
       },
     })
+    if (process.env.LUMEN_DEBUG_HINTS) console.log('[hints] applied in', Date.now() - t0, 'ms')
   } catch (e) { console.warn('[hints] could not apply client hints', e) }
 }
 
@@ -117,6 +119,11 @@ export class ProfileContext {
         const file = path.normalize(path.join(root, u.pathname))
         if (!file.startsWith(assets + path.sep)) return new Response('Forbidden', { status: 403 })
         return net.fetch(pathToFileURL(file).toString())
+      }
+      if (u.host === 'resource') {
+        const stub = this.adblock.getStub(u.pathname.replace(/^\//, ''))
+        if (!stub) return new Response('Not found', { status: 404 })
+        return new Response(new Uint8Array(stub.body), { headers: { 'content-type': stub.mime, 'access-control-allow-origin': '*', 'cross-origin-resource-policy': 'cross-origin', 'cache-control': 'max-age=3600' } })
       }
       // Every lumen://<page>/ is served by the single internal-pages app, which routes on the host name.
       return net.fetch(pathToFileURL(path.join(root, 'pages.html')).toString())
@@ -257,6 +264,28 @@ export class ProfileContext {
   // ---------------------------------------------------------------- cookies and data
   async cookieCount(url?: string): Promise<number> {
     try { return (await this.session.cookies.get(url ? { url } : {})).length } catch { return 0 }
+  }
+
+  /** Cookies grouped by site (registrable-looking domain, leading dot removed). */
+  async cookieSites(): Promise<{ domain: string; count: number; names: string[] }[]> {
+    const all = await this.session.cookies.get({}).catch(() => [])
+    const m = new Map<string, string[]>()
+    for (const c of all) { const d = (c.domain ?? '').replace(/^\./, ''); if (d) (m.get(d) ?? m.set(d, []).get(d)!).push(c.name) }
+    return [...m.entries()].map(([domain, names]) => ({ domain, count: names.length, names: names.slice(0, 50) })).sort((a, b) => a.domain.localeCompare(b.domain))
+  }
+
+  /** Removes every cookie set by a domain or its subdomains. Returns how many were removed. */
+  async removeCookiesFor(domain: string): Promise<number> {
+    const d = domain.replace(/^\./, '').toLowerCase()
+    const all = await this.session.cookies.get({}).catch(() => [])
+    let n = 0
+    for (const c of all) {
+      const cd = (c.domain ?? '').replace(/^\./, '').toLowerCase()
+      if (cd !== d && !cd.endsWith('.' + d)) continue
+      const url = `http${c.secure ? 's' : ''}://${cd}${c.path ?? '/'}`
+      try { await this.session.cookies.remove(url, c.name); n++ } catch { /* already gone */ }
+    }
+    return n
   }
 
   async clearData(opts: { since: number | null; history: boolean; downloads: boolean; cookies: boolean; cache: boolean; passwords: boolean; sitePermissions: boolean; formData?: boolean }) {
