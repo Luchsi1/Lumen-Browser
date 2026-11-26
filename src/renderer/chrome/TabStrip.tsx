@@ -86,7 +86,8 @@ function Tab({ tab, group, active, divider, dragging, onDragStart, onDragEnd }: 
       className={`tab ${active ? 'active' : ''} ${tab.pinned ? 'pinned' : ''} ${dragging ? 'dragging' : ''} ${tab.discarded ? 'sleeping' : ''}`}
       style={group ? ({ '--group': group.color } as React.CSSProperties) : undefined}
       title={`${title}${tab.discarded ? ' (sleeping to save memory)' : ''}${tab.crashed ? ' (crashed, click to reload)' : ''}`}
-      onMouseDown={(e) => { if (e.button === 0) invoke('tab:activate', tab.id); if (e.button === 1) { e.preventDefault(); invoke('tab:close', tab.id) } }}
+      onMouseDown={(e) => { if (e.button === 0) invoke('tab:activate', tab.id); if (e.button === 1) e.preventDefault() }}
+      onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); e.stopPropagation(); invoke('tab:close', tab.id) } }}
       onContextMenu={(e) => { e.preventDefault(); invoke('tab:menu', tab.id) }}
       onDragStart={(e) => { e.dataTransfer.setData('text/plain', tab.url); e.dataTransfer.effectAllowed = 'move'; onDragStart() }}
       onDragEnd={onDragEnd}

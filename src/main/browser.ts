@@ -284,9 +284,18 @@ export class Browser {
     this.scheduleSessionSave()
   }
 
+  /** Ids of tabs being closed right now. The extension system calls back into removeTab() while we notify it, which must not close the tab a second time. */
+  private closing = new Set<number>()
+
   closeTab(w: Win, id: number, opts: { record?: boolean } = {}) {
+    if (this.closing.has(id)) return
     const idx = w.tabs.findIndex((t) => t.id === id)
     if (idx < 0) return
+    this.closing.add(id)
+    try { this.closeTabNow(w, idx, id, opts) } finally { this.closing.delete(id) }
+  }
+
+  private closeTabNow(w: Win, idx: number, id: number, opts: { record?: boolean }) {
     const tab = w.tabs[idx]
     const url = tab.wc?.getURL() || tab.url
     if (opts.record !== false && !w.isPrivate && url && !url.startsWith('lumen://newtab') && url !== 'about:blank') {
@@ -302,7 +311,8 @@ export class Browser {
     const wc = tab.wc
     if (wc) { try { this.extensionsFor(w.profile.id)?.api.removeTab(wc) } catch { /* ignore */ } }
     tab.destroy()
-    w.tabs.splice(idx, 1)
+    const at = w.tabs.indexOf(tab)
+    if (at >= 0) w.tabs.splice(at, 1)
     // Drop groups that became empty.
     w.groups = w.groups.filter((g) => w.tabs.some((t) => t.groupId === g.id))
     if (wasActive) {
