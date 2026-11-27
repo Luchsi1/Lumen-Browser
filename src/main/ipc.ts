@@ -366,6 +366,9 @@ export function registerIpc(browser: Browser, data: AppData, adblock: AdblockSer
   })
 
   // Messages from web pages (never trusted as UI). They only carry what the user typed into a login form.
+  // Read synchronously by the page preload at document start, so the answer must be instant.
+  ipcMain.on('page:reportAsChrome', (e) => { e.returnValue = data.settings.data.reportAsChrome })
+
   ipcMain.on('pw:submit', async (e, payload: { username: string; password: string }) => {
     try {
       const found = browser.tabForWebContents(e.sender)

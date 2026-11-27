@@ -35,6 +35,36 @@ export function chromeUserAgent(): string {
   return `Mozilla/5.0 (${os}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`
 }
 
+
+/** Low-entropy client hint headers, the way Chrome sends them on every request to a secure origin. */
+function lowEntropyHints(): Record<string, string> {
+  const major = process.versions.chrome.split('.')[0]
+  const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
+  return {
+    'sec-ch-ua': `"Not.A/Brand";v="8", "Chromium";v="${major}", "Google Chrome";v="${major}"`,
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': `"${platform}"`,
+  }
+}
+
+/** High-entropy hints, only sent after the origin asked for them with an Accept-CH response header. */
+function highEntropyHint(name: string): string | null {
+  const full = process.versions.chrome
+  switch (name) {
+    case 'sec-ch-ua-full-version-list': return `"Not.A/Brand";v="8.0.0.0", "Chromium";v="${full}", "Google Chrome";v="${full}"`
+    case 'sec-ch-ua-full-version': return `"${full}"`
+    case 'sec-ch-ua-arch': return process.arch === 'arm64' ? '"arm"' : '"x86"'
+    case 'sec-ch-ua-bitness': return '"64"'
+    case 'sec-ch-ua-model': return '""'
+    case 'sec-ch-ua-wow64': return '?0'
+    case 'sec-ch-ua-platform-version': {
+      const build = Number(os.release().split('.')[2] ?? 0)
+      return process.platform === 'win32' ? (build >= 22000 ? '"15.0.0"' : '"10.0.0"') : process.platform === 'darwin' ? '"14.0.0"' : '"6.0.0"'
+    }
+    default: return null
+  }
+}
+
 /**
  * Chromium sends client hints (Sec-CH-UA, navigator.userAgentData) with brands "Chromium" and a GREASE entry only when it is
  * embedded by Electron. Together with a "Chrome/..." user agent this looks like an embedded app and Google refuses sign-in.
@@ -72,6 +102,8 @@ export class ProfileContext {
   private noUpgrade = new Set<string>()
   // https url -> original http url, so a failed upgrade can fall back
   upgraded = new Map<string, string>()
+  // origin -> client hints it asked for via Accept-CH (kept for the run, like Chrome's per-session hint cache)
+  private hintRequests = new Map<string, Set<string>>()
   prompt: PromptFn | null = null
   screenPrompt: ScreenPromptFn | null = null
   windowFor: (wc: WebContents | null) => BrowserWindow | null = () => null
@@ -160,6 +192,12 @@ export class ProfileContext {
     wr.onBeforeSendHeaders({ urls: ['<all_urls>'] }, (details, cb) => {
       const headers = details.requestHeaders
       try {
+        if (this.settings.reportAsChrome && /^(https:|http:\/\/(localhost|127\.0\.0\.1|\[::1\]))/i.test(details.url)) {
+          // session.setUserAgent() makes Chromium drop its own client hints. Chrome always sends these, so add them back.
+          for (const [k, v] of Object.entries(lowEntropyHints())) headers[k] = v
+          const asked = this.hintRequests.get(originOf(details.url))
+          if (asked) for (const name of asked) { const v = highEntropyHint(name); if (v) headers[name] = v }
+        }
         if (this.settings.trackingProtection) headers['Sec-GPC'] = '1'
         if (this.settings.sendDoNotTrack) headers['DNT'] = '1'
         if (this.settings.blockThirdPartyCookies && details.resourceType !== 'mainFrame') {
@@ -176,6 +214,16 @@ export class ProfileContext {
       try {
         const responseHeaders = details.responseHeaders ?? {}
         let changed = false
+        if (this.settings.reportAsChrome) {
+          for (const k of Object.keys(responseHeaders)) {
+            if (k.toLowerCase() !== 'accept-ch') continue
+            const origin = originOf(details.url)
+            const set = this.hintRequests.get(origin) ?? new Set<string>()
+            for (const v of responseHeaders[k]) for (const n of v.split(',')) { const name = n.trim().toLowerCase(); if (name.startsWith('sec-ch-ua')) set.add(name) }
+            this.hintRequests.set(origin, set)
+            if (this.hintRequests.size > 500) this.hintRequests.delete(this.hintRequests.keys().next().value!)
+          }
+        }
         if (this.settings.blockThirdPartyCookies && details.resourceType !== 'mainFrame') {
           const top = this.topSite(details.webContents, details.referrer)
           if (top && /^https?:/i.test(top) && isThirdParty(details.url, top)) {

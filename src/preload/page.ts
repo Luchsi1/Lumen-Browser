@@ -1,7 +1,7 @@
 // Preload attached to every tab. It does two unrelated things:
 //  - on lumen:// pages it exposes the internal API;
 //  - on websites it exposes NOTHING to the page and only watches login forms for the password manager.
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 
 if (location.protocol === 'lumen:') {
   contextBridge.exposeInMainWorld('lumen', {
@@ -15,6 +15,43 @@ if (location.protocol === 'lumen:') {
   })
 } else if (location.protocol === 'https:' || location.protocol === 'http:') {
   setupPasswordManager()
+  if (ipcRenderer.sendSync('page:reportAsChrome') === true) addChromeObject()
+}
+
+/**
+ * Electron pages have an empty window.chrome, Chrome pages have chrome.app, chrome.csi and chrome.loadTimes. Some sites (Google sign-in
+ * among them) look at this to tell Chrome from an embedded app. These are the real Chrome functions, rebuilt from the Performance API
+ * (that is what Chrome itself documents them as: legacy timing helpers), not placeholders.
+ */
+function addChromeObject() {
+  const code = `(() => {
+    const c = window.chrome || (window.chrome = {});
+    const def = (o, k, v) => { if (!(k in o)) Object.defineProperty(o, k, { value: v, writable: true, configurable: true, enumerable: true }); };
+    const nav = () => performance.getEntriesByType('navigation')[0] || {};
+    const t0 = () => performance.timeOrigin / 1000;
+    def(c, 'loadTimes', function loadTimes() {
+      const n = nav(), o = t0();
+      return {
+        requestTime: o + (n.startTime || 0) / 1000, startLoadTime: o + (n.startTime || 0) / 1000,
+        commitLoadTime: o + (n.responseStart || 0) / 1000, finishDocumentLoadTime: o + (n.domContentLoadedEventEnd || 0) / 1000,
+        finishLoadTime: o + (n.loadEventEnd || 0) / 1000, firstPaintTime: o + ((performance.getEntriesByName('first-paint')[0] || {}).startTime || 0) / 1000,
+        firstPaintAfterLoadTime: 0, navigationType: n.type === 'reload' ? 'Reload' : n.type === 'back_forward' ? 'BackForward' : 'Other',
+        wasFetchedViaSpdy: n.nextHopProtocol === 'h2' || n.nextHopProtocol === 'h3', wasNpnNegotiated: n.nextHopProtocol === 'h2' || n.nextHopProtocol === 'h3',
+        npnNegotiatedProtocol: n.nextHopProtocol || 'unknown', wasAlternateProtocolAvailable: false, connectionInfo: n.nextHopProtocol || 'unknown',
+      };
+    });
+    def(c, 'csi', function csi() {
+      const n = nav();
+      return { startE: Math.round(t0() * 1000), onloadT: Math.round(t0() * 1000 + (n.loadEventEnd || 0)), pageT: performance.now(), tran: 15 };
+    });
+    def(c, 'app', {
+      isInstalled: false,
+      InstallState: { DISABLED: 'disabled', INSTALLED: 'installed', NOT_INSTALLED: 'not_installed' },
+      RunningState: { CANNOT_RUN: 'cannot_run', READY_TO_RUN: 'ready_to_run', RUNNING: 'running' },
+      getDetails() { return null }, getIsInstalled() { return false }, installState(cb) { if (cb) cb('not_installed') }, runningState() { return 'cannot_run' },
+    });
+  })()`
+  try { void webFrame.executeJavaScript(code) } catch { /* cosmetic compatibility only */ }
 }
 
 function visible(el: HTMLElement): boolean {

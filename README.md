@@ -70,7 +70,7 @@ Tested on Linux (Electron 45 under Xvfb):
 
 ## Known limitations
 
-- **Google sign-in:** Google refuses sign-in from browsers that look like embedded apps. Lumen reports Chrome-compatible browser hints (setting "Report as Google Chrome to websites", on by default). Verified here: `Sec-CH-UA` and `navigator.userAgentData` now include the Chrome brand and match the user agent. Whether Google accepts a sign-in was **not** tested (no account access), and Google can change its checks at any time.
+- **Google sign-in:** Google refuses sign-in from browsers that look like embedded apps. Lumen reports Chrome-compatible browser hints (setting "Report as Google Chrome to websites", on by default). A header comparison against a real Chromium showed that earlier builds sent **no** `Sec-CH-UA*` request headers at all (only the JavaScript side, `navigator.userAgentData`, was correct). Lumen now sends the Chrome set on every secure request, honours `Accept-CH` for the detailed hints, and provides `window.chrome.app/csi/loadTimes` on top-level pages. Verified here against a local server. Whether Google accepts a sign-in was **not** tested (no account access, Google not reachable from the build sandbox), and Google can change its checks at any time. Not covered: `window.chrome` inside iframes, and Google's own bot-detection scripts, which also look at things Lumen cannot change.
 
 - Clearing cookies and site data always clears **all time**; only history and downloads honor the time range.
 - `$popup` filter options are not supported by the engine. Pop-up blocking uses gesture checks plus blocked-domain matching instead.
