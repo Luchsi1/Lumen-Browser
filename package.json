@@ -54,6 +54,9 @@
       "!**/*.map"
     ],
     "asar": true,
+    "asarUnpack": [
+      "dist/main/adblock-worker.js"
+    ],
     "icon": "build/icon.png",
     "win": {
       "icon": "build/icon.ico",

@@ -1,5 +1,6 @@
 // The browser itself: windows, tab strip model, groups, session restore, overlays, shortcuts, context menus.
 import { app, BrowserWindow, Menu, MenuItem, WebContentsView, clipboard, dialog, ipcMain, nativeTheme, shell, type ContextMenuParams, type Input, type WebContents } from 'electron'
+import os from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { Tab, type TabHost } from './tab.ts'
@@ -16,6 +17,14 @@ export const TAB_H = 40
 export const TOOLBAR_H = 44
 export const BOOKMARKS_H = 32
 export const SIDE_PANEL_W = 340
+/** Native window-button background; must equal the tab strip colour (--bg-strip in chrome.css, which differs in private windows). */
+const titleBarColor = (dark: boolean, priv: boolean) => (priv ? (dark ? '#2b2438' : '#d9d2ea') : dark ? '#1b1c20' : '#e6e9ee')
+/** A hidden overlay (pop-up layer) is released after this long; it is recreated on the next use. */
+const OVERLAY_IDLE_MS = 90_000
+/** Low-memory mode for tab sleeping: below this share of free RAM, tabs sleep after PRESSURE_IDLE_MINUTES. */
+const LOW_MEMORY_FREE_RATIO = 0.12
+const PRESSURE_IDLE_MINUTES = 5
+const PRESSURE_DISCARDS_PER_ROUND = 3
 export const GROUP_COLORS = ['#8ab4f8', '#f28b82', '#fdd663', '#81c995', '#ff8bcb', '#78d9ec', '#c58af9', '#fcad70']
 
 export interface Paths { dist: string; chromePreload: string; pagePreload: string; chromeHtml: string; overlayHtml: string; icon: string }
@@ -24,7 +33,9 @@ export class Win {
   tabs: Tab[] = []
   groups: TabGroup[] = []
   activeId: number | null = null
-  overlay!: WebContentsView
+  /** The pop-up layer. Created on first use and released again after a while, because it is a whole renderer process. */
+  overlay: WebContentsView | null = null
+  overlayIdleTimer: NodeJS.Timeout | null = null
   sidePanel: WebContentsView | null = null
   overlayOpen: OverlayRequest | null = null
   fullscreen = false
@@ -116,7 +127,7 @@ export class Browser {
       title: isPrivate ? 'Lumen (Private)' : 'Lumen',
       icon: this.paths.icon,
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: dark ? '#1b1c20' : '#e6e9ee', symbolColor: dark ? '#e6e6e6' : '#222', height: TAB_H },
+      titleBarOverlay: { color: titleBarColor(dark, isPrivate), symbolColor: dark ? '#e6e6e6' : '#222', height: TAB_H },
       webPreferences: {
         session: this.uiSession, preload: this.paths.chromePreload, contextIsolation: true, nodeIntegration: false, sandbox: true,
         additionalArguments: [`--lumen-window-private=${isPrivate ? 1 : 0}`],
@@ -125,13 +136,6 @@ export class Browser {
     const w = new Win(win, profile, parentId)
     this.windows.set(win.id, w)
     this.lastFocused = w
-
-    w.overlay = new WebContentsView({ webPreferences: { session: this.uiSession, preload: this.paths.chromePreload, contextIsolation: true, nodeIntegration: false, sandbox: true } })
-    w.overlay.setBackgroundColor('#00000000')
-    w.overlay.setVisible(false)
-    w.overlay.webContents.loadFile(this.paths.overlayHtml).catch(() => {})
-    win.contentView.addChildView(w.overlay)
-    this.bindKeys(w.overlay.webContents, w)
 
     win.webContents.loadFile(this.paths.chromeHtml, { query: { window: String(win.id), private: isPrivate ? '1' : '0' } }).catch((e) => console.error('[window] load chrome', e))
     this.bindKeys(win.webContents, w)
@@ -169,6 +173,7 @@ export class Browser {
     win.on('closed', () => {
       this.windows.delete(win.id)
       if (this.lastFocused === w) this.lastFocused = [...this.windows.values()].pop() ?? null
+      if (w.overlayIdleTimer) { clearTimeout(w.overlayIdleTimer); w.overlayIdleTimer = null }
       for (const t of w.tabs) t.destroy()
       for (const p of w.prompts) p.resolve(null)
       w.currentPrompt?.resolve(null)
@@ -180,7 +185,7 @@ export class Browser {
 
   winForWebContents(wc: WebContents): Win | null {
     for (const w of this.windows.values()) {
-      if (w.chrome === wc || w.overlay.webContents === wc || w.sidePanel?.webContents === wc) return w
+      if (w.chrome === wc || w.overlay?.webContents === wc || w.sidePanel?.webContents === wc) return w
       if (w.tabs.some((t) => t.wc === wc)) return w
     }
     return null
@@ -203,7 +208,7 @@ export class Browser {
     nativeTheme.themeSource = this.settings.theme
     const dark = this.isDark()
     for (const w of this.windows.values()) {
-      try { w.win.setTitleBarOverlay({ color: dark ? '#1b1c20' : '#e6e9ee', symbolColor: dark ? '#e6e6e6' : '#222', height: TAB_H }) } catch { /* not supported on this platform */ }
+      try { w.win.setTitleBarOverlay({ color: titleBarColor(dark, w.isPrivate), symbolColor: dark ? '#e6e6e6' : '#222', height: TAB_H }) } catch { /* not supported on this platform */ }
       w.win.setBackgroundColor(dark ? '#1b1c20' : '#f1f3f6')
     }
   }
@@ -224,7 +229,7 @@ export class Browser {
     let ob = { x: 0, y: 0, width: cw, height: ch }
     if (o?.kind === 'suggestions') ob = { x: Math.round(o.anchor.x), y: Math.round(o.anchor.y + o.anchor.height), width: o.width, height: o.height }
     else if (o?.kind === 'find' || o?.kind === 'zoom') ob = { x: Math.max(0, cw - panelW - o.width - 16), y: top + 6, width: o.width, height: o.height }
-    w.overlay.setBounds(ob)
+    w.overlay?.setBounds(ob)
   }
 
   // ------------------------------------------------------------------ tabs
@@ -251,7 +256,7 @@ export class Browser {
     if (!o.lazy) {
       const view = tab.ensureView()
       w.win.contentView.addChildView(view)
-      w.win.contentView.addChildView(w.overlay) // keep the overlay on top
+      this.raiseOverlay(w) // keep the overlay on top
       view.setVisible(false)
     }
     this.normalize(w)
@@ -266,7 +271,7 @@ export class Browser {
     if (tab.view && tab.wc) return
     const view = tab.ensureView()
     w.win.contentView.addChildView(view)
-    w.win.contentView.addChildView(w.overlay)
+    this.raiseOverlay(w)
     this.layout(w)
   }
 
@@ -446,20 +451,34 @@ export class Browser {
     this.activate(w, visible[(i + delta + visible.length) % visible.length].id)
   }
 
+  /**
+   * Put background tabs to sleep (the renderer process is freed, the tab stays and reloads when selected).
+   * Normally that happens after the configured idle time. When the computer is short on memory, tabs that have been
+   * idle for only a few minutes go too, longest-idle first, a few per round, so Lumen does not push the system into swapping.
+   * "Never" in the settings is respected in both cases.
+   */
   private discardIdleTabs() {
     const minutes = this.settings.backgroundTabSleepMinutes
     if (!minutes) return
-    const limit = Date.now() - minutes * 60_000
+    const pressure = os.freemem() / os.totalmem() < LOW_MEMORY_FREE_RATIO
+    const idleMs = (pressure ? Math.min(minutes, PRESSURE_IDLE_MINUTES) : minutes) * 60_000
+    const limit = Date.now() - idleMs
+    const candidates: { w: Win; t: Tab }[] = []
     for (const w of this.windows.values()) {
       for (const t of w.tabs) {
         if (t.id === w.activeId || !t.wc || t.lastActive > limit || t.audible || t.loading) continue
         if (t.wc.isDevToolsOpened() || t.wc.isCrashed()) continue
-        const wc = t.wc
-        try { this.extensionsFor(w.profile.id)?.api.removeTab(wc) } catch { /* ignore */ }
-        if (t.view) w.win.contentView.removeChildView(t.view)
-        t.discard()
-        this.sendState(w)
+        candidates.push({ w, t })
       }
+    }
+    candidates.sort((a, b) => a.t.lastActive - b.t.lastActive)
+    for (const { w, t } of candidates.slice(0, pressure ? PRESSURE_DISCARDS_PER_ROUND : candidates.length)) {
+      const wc = t.wc
+      if (!wc) continue
+      try { this.extensionsFor(w.profile.id)?.api.removeTab(wc) } catch { /* ignore */ }
+      if (t.view) w.win.contentView.removeChildView(t.view)
+      t.discard()
+      this.sendState(w)
     }
   }
 
@@ -513,7 +532,7 @@ export class Browser {
   broadcast(channel: string, ...args: unknown[]) {
     for (const w of this.windows.values()) {
       this.post(w, channel, ...args)
-      if (!w.overlay.webContents.isDestroyed()) w.overlay.webContents.send(channel, ...args)
+      if (w.overlay && !w.overlay.webContents.isDestroyed()) w.overlay.webContents.send(channel, ...args)
       for (const t of w.tabs) if (t.wc && t.url.startsWith('lumen://')) t.wc.send(channel, ...args)
       if (w.sidePanel && !w.sidePanel.webContents.isDestroyed()) w.sidePanel.webContents.send(channel, ...args)
     }
@@ -533,7 +552,7 @@ export class Browser {
       openPopupWindow: () => {},
       contextMenu: (tab, params) => self.showContextMenu(w, tab, params),
       keyDown: (_tab, input, event) => self.handleKey(w, input, event),
-      found: (tab, r) => { if (tab.id === w.activeId) w.overlay.webContents.send('find:result', r) },
+      found: (tab, r) => { if (tab.id === w.activeId && w.overlay && !w.overlay.webContents.isDestroyed()) w.overlay.webContents.send('find:result', r) },
       htmlFullscreen: (tab, on) => self.htmlFullscreen(w, tab, on),
       confirmExternal: async (tab, url) => {
         const origin = originOf(tab.wc?.getURL() ?? '')
@@ -557,7 +576,7 @@ export class Browser {
   private onTabChanged(w: Win, tab: Tab, urlChanged: boolean) {
     this.sendState(w)
     if (urlChanged) this.scheduleSessionSave()
-    if (tab.id === w.activeId && !w.overlay.webContents.isDestroyed()) w.overlay.webContents.send('tab:changed')
+    if (tab.id === w.activeId && w.overlay && !w.overlay.webContents.isDestroyed()) w.overlay.webContents.send('tab:changed')
   }
 
   // ------------------------------------------------------------------ extension host adapter
@@ -607,7 +626,7 @@ export class Browser {
       const view = new WebContentsView({ webPreferences: { session: w.profile.session, preload: this.paths.pagePreload, contextIsolation: true, nodeIntegration: false, sandbox: true } })
       w.sidePanel = view
       w.win.contentView.addChildView(view)
-      w.win.contentView.addChildView(w.overlay)
+      this.raiseOverlay(w)
       this.bindKeys(view.webContents, w)
     }
     w.sidePanel.webContents.loadURL(`lumen://${target}/?panel=1`).catch(() => {})
@@ -621,22 +640,61 @@ export class Browser {
     this.layout(w); this.sendState(w)
   }
 
-  showOverlay(w: Win, req: OverlayRequest) {
-    w.overlayOpen = req
+  /** Create the overlay view when it is first needed. It loads asynchronously and asks for the open request (`overlay:current`) once it is up. */
+  private ensureOverlay(w: Win): WebContentsView {
+    if (w.overlay && !w.overlay.webContents.isDestroyed()) return w.overlay
+    const view = new WebContentsView({ webPreferences: { session: this.uiSession, preload: this.paths.chromePreload, contextIsolation: true, nodeIntegration: false, sandbox: true } })
+    view.setBackgroundColor('#00000000')
+    view.setVisible(false)
+    view.webContents.loadFile(this.paths.overlayHtml).catch(() => {})
+    this.bindKeys(view.webContents, w)
+    w.overlay = view
+    w.win.contentView.addChildView(view)
+    return view
+  }
+
+  /** Keep the overlay (if it exists) above every other view. */
+  private raiseOverlay(w: Win) {
+    if (!w.overlay || w.overlay.webContents.isDestroyed()) return
     w.win.contentView.removeChildView(w.overlay)
-    w.win.contentView.addChildView(w.overlay) // raise above everything
+    w.win.contentView.addChildView(w.overlay)
+  }
+
+  /** Free the overlay's renderer process after it has been hidden for a while. */
+  private scheduleOverlayRelease(w: Win) {
+    if (w.overlayIdleTimer) clearTimeout(w.overlayIdleTimer)
+    w.overlayIdleTimer = setTimeout(() => {
+      w.overlayIdleTimer = null
+      if (w.win.isDestroyed() || !w.overlay) return
+      if (w.overlayOpen || w.currentPrompt || w.prompts.length) return this.scheduleOverlayRelease(w)
+      const view = w.overlay
+      w.overlay = null
+      try { w.win.contentView.removeChildView(view); view.webContents.close({ waitForBeforeUnload: false }) } catch { /* already gone */ }
+    }, OVERLAY_IDLE_MS)
+    w.overlayIdleTimer.unref?.()
+  }
+
+  showOverlay(w: Win, req: OverlayRequest) {
+    w.overlayOpen = req // set before the view exists: a freshly created overlay reads it with overlay:current
+    if (w.overlayIdleTimer) { clearTimeout(w.overlayIdleTimer); w.overlayIdleTimer = null }
+    const overlay = this.ensureOverlay(w)
+    w.win.contentView.removeChildView(overlay)
+    w.win.contentView.addChildView(overlay) // raise above everything
     this.layout(w)
-    w.overlay.setVisible(true)
-    w.overlay.webContents.send('overlay:show', req)
-    if (req.focus !== false) w.overlay.webContents.focus()
+    overlay.setVisible(true)
+    if (!overlay.webContents.isLoading()) overlay.webContents.send('overlay:show', req)
+    if (req.focus !== false) overlay.webContents.focus()
   }
 
   hideOverlay(w: Win) {
     const o = w.overlayOpen
     if (!o) return
     w.overlayOpen = null
-    w.overlay.setVisible(false)
-    w.overlay.webContents.send('overlay:hide')
+    if (w.overlay && !w.overlay.webContents.isDestroyed()) {
+      w.overlay.setVisible(false)
+      w.overlay.webContents.send('overlay:hide')
+      this.scheduleOverlayRelease(w)
+    }
     // Give focus back to the page only if the overlay had taken it. The address-bar dropdown never does, and
     // stealing focus from the address bar while the user types loses what they typed.
     if (o.focus !== false) w.active?.wc?.focus()

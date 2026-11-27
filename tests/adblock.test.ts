@@ -112,3 +112,24 @@ test('scriptlets: ##+js rules produce scripts once resources are loaded', async 
   assert.ok(r.scripts.length > 0, 'scriptlet code is generated')
   assert.throws(() => m.setResources('not json'))
 })
+
+test('buildAsync uses an external compiler, caches, and falls back when it fails', async () => {
+  const { FilterEngineManager } = await import('../src/main/adblock-engine.ts')
+  const os = await import('node:os'); const fs = await import('node:fs'); const path = await import('node:path')
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-eng-'))
+  const list = path.join(dir, 'l.txt'); fs.writeFileSync(list, '||ads.example.com^\n')
+  const inputs = [{ id: 'l', file: list }]
+  const { compileJob } = await import('../src/main/adblock-compile.ts')
+  let calls = 0
+  const m = new FilterEngineManager(path.join(dir, 'cache'))
+  await m.buildAsync(inputs, [], '', 'k', async (job: any) => { calls++; return compileJob(job) })
+  assert.equal(calls, 1)
+  assert.equal(m.match('https://ads.example.com/x.js', 'https://site.org/', 'script').blocked, true)
+  const m2 = new FilterEngineManager(path.join(dir, 'cache'))
+  const st = await m2.buildAsync(inputs, [], '', 'k', async () => { throw new Error('must not compile on a cache hit') })
+  assert.equal(st.networkRules, m.stats.networkRules)
+  assert.equal(m2.match('https://ads.example.com/x.js', 'https://site.org/', 'script').blocked, true)
+  const m3 = new FilterEngineManager()
+  await m3.buildAsync(inputs, [], '', undefined, async () => { throw new Error('boom') })
+  assert.equal(m3.match('https://ads.example.com/x.js', 'https://site.org/', 'script').blocked, true)
+})

@@ -1,12 +1,12 @@
 // Electron integration of the filter engine: list storage and updates, request hook, cosmetic filtering,
 // per-tab statistics and per-site allowlist.
-import { app, ipcMain, net, type Session, type WebContents } from 'electron'
+import { app, ipcMain, net, utilityProcess, type Session, type WebContents } from 'electron'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { parse as parseUrl } from 'tldts-experimental'
-import { FilterEngineManager, countRuleLines } from './adblock-engine.ts'
+import { FilterEngineManager, countRuleLines, threadCompiler, type Compiler, type EngineInput } from './adblock-engine.ts'
 import { JsonStore } from './store.ts'
 import { hostMatches, normalizeAllowEntry } from '../shared/url.ts'
 import type { AppData } from './data.ts'
@@ -67,7 +67,7 @@ export class AdblockService extends EventEmitter {
   private resourcesFile() { return path.join(this.listDir, '_resources.json') }
 
   private loadResources(): boolean {
-    try { this.engine.setResources(fs.readFileSync(this.resourcesFile(), 'utf8')); return true } catch { return false }
+    try { this.engine.setResourcesFromFile(this.resourcesFile()); return true } catch { return false }
   }
 
   /** Scriptlet library for `##+js(...)` rules. Failure is not fatal: those rules are then inactive. */
@@ -76,21 +76,22 @@ export class AdblockService extends EventEmitter {
       const res = await net.fetch(RESOURCES_URL, { signal: AbortSignal.timeout(90_000), headers: { 'User-Agent': 'Lumen-FilterUpdater' } })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const text = await res.text()
-      this.engine.setResources(text) // validates
+      this.engine.setResources(text, this.resourcesFile()) // validates; the engine re-reads the file instead of keeping the text
       const tmp = this.resourcesFile() + '.tmp'
       fs.writeFileSync(tmp, text); fs.renameSync(tmp, this.resourcesFile())
       this.resourcesError = undefined
     } catch (e: any) { this.resourcesError = String(e?.message ?? e) }
   }
 
-  init() {
+  /** Resolves when the first engine is ready (immediately from the cache, after a compile on a first run or after a list update). */
+  async init() {
     this.seedFromBundle()
     this.loadResources()
-    this.rebuild()
     this.installCosmeticHandler()
     this.schedule()
     // Refresh stale lists shortly after start so startup is never blocked on the network.
     setTimeout(() => { if (this.isStale()) void this.updateAll(false) }, 8000)
+    await this.rebuild()
   }
 
   private seedDir(): string {
@@ -137,20 +138,68 @@ export class AdblockService extends EventEmitter {
     return this.cfg.lists.filter((l) => l.enabled && (tracking || l.category !== 'privacy'))
   }
 
-  rebuild() {
-    const main: { id: string; text: string }[] = []
-    const sec: { id: string; text: string }[] = []
+  private rebuilding: Promise<void> | null = null
+  private rebuildAgain = false
+
+  /** Where the bundled list compiler lives. Packaged builds unpack it from the asar archive so a separate process can run it. */
+  private compilerScript(): string {
+    const p = path.join(__dirname, 'adblock-worker.js')
+    const unpacked = p.replace(/app\.asar([\\/])/, 'app.asar.unpacked$1')
+    return unpacked !== p && fs.existsSync(unpacked) ? unpacked : p
+  }
+
+  /**
+   * Compile in a short-lived utility process: when it exits, all the memory the list parser needed is returned to the OS.
+   * (The same work in this process or in a worker thread leaves roughly 200 MB resident for the rest of the session.)
+   * If the process cannot be started or does not answer, a worker thread is used, and the engine falls back to compiling
+   * in-process as a last resort, so ad blocking never depends on this optimisation.
+   */
+  private compile: Compiler = async (job) => {
+    try { return await this.compileInProcess(job) } catch (e) {
+      console.warn('[adblock] utility process compile failed, trying a worker thread:', (e as Error)?.message ?? e)
+      return threadCompiler(fs.readFileSync(path.join(__dirname, 'adblock-worker.js'), 'utf8'))(job)
+    }
+  }
+
+  private compileInProcess(job: Parameters<Compiler>[0]): ReturnType<Compiler> {
+    return new Promise((resolve, reject) => {
+      const child = utilityProcess.fork(this.compilerScript(), [], { serviceName: 'Lumen filter compiler', stdio: 'ignore' })
+      let done = false
+      const finish = (fn: () => void) => { if (done) return; done = true; clearTimeout(timer); try { child.kill() } catch { /* already gone */ }; fn() }
+      const timer = setTimeout(() => finish(() => reject(new Error('timed out'))), 180_000)
+      child.once('message', (m: { ok: boolean; result?: any; error?: string }) => finish(() => (m?.ok && m.result ? resolve(m.result) : reject(new Error(m?.error ?? 'compiler failed')))))
+      child.once('exit', (code) => finish(() => reject(new Error(`compiler exited with code ${code}`))))
+      child.once('spawn', () => child.postMessage(job))
+    })
+  }
+
+  /** Rebuild the engines from the stored lists. Requests that arrive while a build runs are folded into one follow-up build. The old engine keeps serving until the new one is ready. */
+  rebuild(): Promise<void> {
+    if (this.rebuilding) { this.rebuildAgain = true; return this.rebuilding }
+    this.rebuilding = (async () => {
+      do { this.rebuildAgain = false; await this.rebuildOnce() } while (this.rebuildAgain)
+    })().finally(() => { this.rebuilding = null })
+    return this.rebuilding
+  }
+
+  private async rebuildOnce() {
+    const main: EngineInput[] = []
+    const sec: EngineInput[] = []
     const keyParts: string[] = [String(this.cfg.cosmetic), this.cfg.customRules]
     for (const l of this.activeLists()) {
-      let text = ''
-      try { text = fs.readFileSync(this.listFile(l.id), 'utf8') } catch { continue }
-      ;(l.category === SECURITY_CATEGORY ? sec : main).push({ id: l.id, text })
-      keyParts.push(`${l.id}:${this.meta.data.status[l.id]?.lastUpdated ?? 0}:${text.length}`)
+      // Only the file's size and modification time identify its content here: the text itself is read only if a compile is needed.
+      const file = this.listFile(l.id)
+      let st: fs.Stats
+      try { st = fs.statSync(file) } catch { continue }
+      ;(l.category === SECURITY_CATEGORY ? sec : main).push({ id: l.id, file })
+      keyParts.push(`${l.id}:${this.meta.data.status[l.id]?.lastUpdated ?? 0}:${st.size}:${Math.round(st.mtimeMs)}`)
     }
     const key = createHash('sha1').update(keyParts.join('|')).digest('hex')
-    const stats = this.engine.build(main, sec, this.cfg.customRules, key)
-    this.customErrors = stats.customErrors
-    console.log(`[adblock] ${stats.totalRules} rules ready in ${stats.ms}ms`)
+    try {
+      const stats = await this.engine.buildAsync(main, sec, this.cfg.customRules, key, this.compile)
+      this.customErrors = stats.customErrors
+      console.log(`[adblock] ${stats.totalRules} rules ready in ${stats.ms}ms`)
+    } catch (e) { console.error('[adblock] rebuild failed', e) }
     this.emitChanged()
   }
 
@@ -185,8 +234,7 @@ export class AdblockService extends EventEmitter {
     await Promise.all([...targets.map((l) => this.updateList(l)), this.updateResources()])
     if (targets.some((l) => !this.meta.data.status[l.id]?.error)) this.meta.data.lastUpdate = Date.now()
     this.meta.flush()
-    await new Promise((r) => setImmediate(r))
-    this.rebuild()
+    await this.rebuild()
   }
 
   async addList(name: string, url: string): Promise<FilterListConfig> {
@@ -215,7 +263,7 @@ export class AdblockService extends EventEmitter {
     delete this.meta.data.status[id]
     try { fs.unlinkSync(this.listFile(id)) } catch { /* already gone */ }
     this.data.settings.save(); this.meta.save()
-    this.rebuild()
+    void this.rebuild()
   }
 
   async setListEnabled(id: string, enabled: boolean) {
@@ -224,10 +272,10 @@ export class AdblockService extends EventEmitter {
     l.enabled = enabled
     this.data.settings.save()
     if (enabled && !fs.existsSync(this.listFile(id))) await this.updateAll(true, id)
-    else this.rebuild()
+    else await this.rebuild()
   }
 
-  reconfigure() { this.rebuild(); this.schedule() }
+  reconfigure() { void this.rebuild(); this.schedule() }
 
   // ------------------------------------------------------------------ allowlist
   isAllowlisted(host: string): boolean {

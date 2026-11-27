@@ -15,6 +15,8 @@ const external = ['electron', 'electron-chrome-extensions', 'electron-chrome-web
 const common = { bundle: true, platform: 'node', target: 'node22', sourcemap: dev ? 'inline' : false, minify: !dev, logLevel: 'info', absWorkingDir: root }
 
 await build({ ...common, entryPoints: ['src/main/main.ts'], outfile: 'dist/main/main.js', format: 'cjs', external })
+// Filter list compiler: runs in a worker thread, everything it needs is bundled into the one file.
+await build({ ...common, entryPoints: ['src/main/adblock-worker.ts'], outfile: 'dist/main/adblock-worker.js', format: 'cjs' })
 // Sandboxed preloads can only require('electron'); everything else must be bundled in.
 await build({ ...common, entryPoints: ['src/preload/chrome.ts'], outfile: 'dist/preload/chrome.js', format: 'cjs', external: ['electron'] })
 await build({ ...common, entryPoints: ['src/preload/page.ts'], outfile: 'dist/preload/page.js', format: 'cjs', external: ['electron'] })

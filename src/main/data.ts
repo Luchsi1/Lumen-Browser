@@ -84,7 +84,8 @@ export class ProfileData {
   dir: string
   constructor(dir: string, memory = false) {
     this.dir = dir
-    this.store = new JsonStore<ProfileFile>({ dir, name: 'profile', defaults: PROFILE_DEFAULTS, memory })
+    // Every page load touches history several times and each write serializes the whole file (many MB with a long history), so writes are batched over a longer window.
+    this.store = new JsonStore<ProfileFile>({ dir, name: 'profile', defaults: PROFILE_DEFAULTS, memory, debounceMs: 2000 })
   }
   get d() { return this.store.data }
   save() { this.store.save() }

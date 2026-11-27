@@ -82,7 +82,7 @@ app.whenReady().then(async () => {
   ElectronChromeExtensions.handleCRXProtocol(uiSession)
 
   adblockService = new AdblockService(data)
-  adblockService.init()
+  await adblockService.init() // instant with a cache; a first run or changed lists compile first so nothing loads unfiltered
 
   browser = new Browser(data, adblockService, {
     dist,
